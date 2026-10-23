@@ -21,25 +21,6 @@ struct diccionario {
 	size_t capacidad;
 };
 
-size_t buscar_indice(diccionario_t* d, char* clave, bool* encontrada){
-    size_t indice = funcion_hash(clave) % d->capacidad;
-    size_t i = 0;
-    bool espacio_vacio = false;
-    while (!(*encontrada) && (!espacio_vacio) && (i < d->capacidad)){
-        if ((!d->tabla[indice].fue_borrado) && (!d->tabla[indice].clave)){
-            espacio_vacio = true;
-        }
-        else if (son_claves_iguales(d->tabla[indice].clave, clave)){
-            *encontrada = true;
-        }
-        else {
-            indice = (indice + 1) % d->capacidad;
-            i++;
-        }
-    }
-    return indice;
-}
-
 size_t funcion_hash(char *clave)
 {
 	size_t hash = HASH_INICIAL;
@@ -52,10 +33,29 @@ size_t funcion_hash(char *clave)
 
 bool son_claves_iguales(char *clave1, char *clave2)
 {
-    if ((!clave1) || (!clave2)) {
-        return false;
-    }
+	if ((!clave1) || (!clave2)) {
+		return false;
+	}
 	return (strcmp(clave1, clave2) == SON_IGUALES);
+}
+
+size_t buscar_clave(diccionario_t *d, char *clave, bool *encontrada)
+{
+	size_t indice = funcion_hash(clave) % d->capacidad;
+	size_t i = 0;
+	bool espacio_vacio = false;
+	while (!(*encontrada) && (!espacio_vacio) && (i < d->capacidad)) {
+		if ((!d->tabla[indice].fue_borrado) &&
+		    (!d->tabla[indice].clave)) {
+			espacio_vacio = true;
+		} else if (son_claves_iguales(d->tabla[indice].clave, clave)) {
+			*encontrada = true;
+		} else {
+			indice = (indice + 1) % d->capacidad;
+			i++;
+		}
+	}
+	return indice;
 }
 
 diccionario_t *diccionario_crear(unsigned capacidad_inicial)
@@ -94,7 +94,7 @@ bool diccionario_insertar(diccionario_t *d, char *clave, void *valor,
 	    FACTOR_DE_CARGA_MAXIMO) { //Casteo a int para que la divison me de con coma y no redondeado a 0
 		return true;
 	}
-    return false;
+	return false;
 }
 
 bool diccionario_buscar(diccionario_t *d, char *clave)
@@ -102,86 +102,39 @@ bool diccionario_buscar(diccionario_t *d, char *clave)
 	if ((!d) || (!clave)) {
 		return false;
 	}
-	size_t indice = funcion_hash(clave) % d->capacidad;
-	size_t i = 0;
-	bool encontrada = false;
-	bool espacio_vacio = false;
-	while ((!encontrada) && (!espacio_vacio) && (i < d->capacidad)) {
-		if ((!d->tabla[indice].clave) &&
-		    (!d->tabla[indice].fue_borrado)) {
-			espacio_vacio = true;
-		} else if ((son_claves_iguales(d->tabla[indice].clave,
-					       clave))) { //ACA BORRE ALGO
-			encontrada = true;
-		} else {
-			indice = (indice + 1) % d->capacidad;
-			i++;
-		}
-	}
-	return encontrada;
+	bool clave_encontrada = false;
+	buscar_clave(d, clave, &clave_encontrada);
+	return clave_encontrada;
 }
 
-/*
- * Busca una clave en el diccionario y devuelve el valor asociado.
- */
 void *diccionario_obtener(diccionario_t *d, char *clave)
 {
 	if ((!d) || (!clave)) {
 		return NULL;
 	}
-	void *valor = NULL;
-	size_t indice = funcion_hash(clave) % d->capacidad;
-	size_t i = 0;
-	bool encontrada = false;
-	bool espacio_vacio = false;
-	while ((!encontrada) && (!espacio_vacio) && (i < d->capacidad)) {
-		if ((!d->tabla[indice].clave) &&
-		    (!d->tabla[indice].fue_borrado)) {
-			espacio_vacio = true;
-		} else if ((son_claves_iguales(d->tabla[indice].clave,
-					       clave))) {
-			encontrada = true;
-			valor = d->tabla[indice].valor;
-		} else {
-			indice = (indice + 1) % d->capacidad;
-			i++;
-		}
+	bool clave_encontrada = false;
+	size_t indice = buscar_clave(d, clave, &clave_encontrada);
+	if (clave_encontrada) {
+		return (d->tabla[indice].valor);
 	}
-	return valor;
+	return NULL;
 }
 
-/*
- * Elimina una clave de la tabla y devuelve el valor asociado a esa clave o NULL si no existía.
- */
 void *diccionario_eliminar(diccionario_t *d, char *clave)
 {
 	if ((!d) || (!clave)) {
 		return NULL;
 	}
-	void *valor = NULL;
-	size_t indice = funcion_hash(clave) % d->capacidad;
-	size_t i = 0;
-	bool encontrada = false;
-	bool espacio_vacio = false;
-	while ((!encontrada) && (!espacio_vacio) && (i < d->capacidad)) {
-		if ((!d->tabla[indice].clave) &&
-		    (!d->tabla[indice].fue_borrado)) {
-			espacio_vacio = true;
-		} else if ((son_claves_iguales(d->tabla[indice].clave,
-					       clave))) {
-			encontrada = true;
-			valor = d->tabla[indice].valor;
-			d->tabla[indice].valor = NULL;
-			free(d->tabla[indice].clave);
-			d->tabla[indice].clave = NULL;
-			d->tabla[indice].fue_borrado = true;
-			d->cantidad--;
-		} else {
-			indice = (indice + 1) % d->capacidad;
-			i++;
-		}
+	bool clave_encontrada = false;
+	size_t indice = buscar_clave(d, clave, &clave_encontrada);
+	if (clave_encontrada) {
+		free(d->tabla[indice].clave);
+		d->tabla[indice].clave = NULL;
+		d->tabla[indice].fue_borrado = true;
+		d->cantidad--;
+		return (d->tabla[indice].valor);
 	}
-	return valor;
+	return NULL;
 }
 
 size_t diccionario_cantidad(diccionario_t *d)
@@ -195,9 +148,9 @@ size_t diccionario_cantidad(diccionario_t *d)
 size_t diccionario_iterar(diccionario_t *d, bool (*f)(char *, void *, void *),
 			  void *extra)
 {
-    if ((!d) || (!f)) {
-    return 0;
-    }
+	if ((!d) || (!f)) {
+		return 0;
+	}
 	bool seguir_iterando = true;
 	size_t i = 0;
 	size_t invocaciones = 0;
