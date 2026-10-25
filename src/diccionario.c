@@ -8,54 +8,148 @@
 #define CARACTER_NULO '\0'
 #define SON_IGUALES 0
 #define FACTOR_DE_CARGA_MAXIMO 0.75f
+#define MULTIPLICADOR_CAPACIDAD 2
+#define PASO_LINEAL 1
 
-typedef struct celda {
+typedef struct par {
 	void *valor;
 	char *clave;
-	bool fue_borrado;
-} celda_t;
+	bool eliminado;
+} par_t;
 
 struct diccionario {
-	celda_t *tabla;
+	par_t *tabla;
 	size_t cantidad;
 	size_t capacidad;
 };
 
+/*
+ * La clave recibida por parámetro es válida.
+ * 
+ * Devuelve el valor numérico (hash) generado.
+ */
 size_t funcion_hash(char *clave)
 {
 	size_t hash = HASH_INICIAL;
-	while (*clave != CARACTER_NULO) {
-		hash = hash * MULTIPLICADOR_DJB2 + (size_t)(*clave);
+	while ((*clave) != CARACTER_NULO) {
+		hash = (hash * MULTIPLICADOR_DJB2) + (size_t)(*clave);
 		clave++;
 	}
 	return hash;
 }
 
-bool son_claves_iguales(char *clave1, char *clave2)
+/*
+ * Las claves recibidas por parámetro son válidas.
+ * 
+ * Devuelve true si ambas claves son iguales, false en caso contrario.
+ */
+bool claves_coinciden(char *clave1, char *clave2)
 {
-	if ((!clave1) || (!clave2)) {
-		return false;
-	}
 	return (strcmp(clave1, clave2) == SON_IGUALES);
 }
 
-size_t buscar_clave(diccionario_t *d, char *clave, bool *encontrada)
+/*
+ * El diccionario y la clave existen y son válidos. El puntero 'encontrada' es válido.	
+ * Actualiza el booleano 'encontrada' si halla la clave.
+ * Devuelve el índice donde se encuentra la clave, o en su defecto, el índice 
+ * del primer espacio libre o eliminado disponible para insertarla.
+ */
+size_t buscar_indice(diccionario_t *d, char *clave, bool *encontrada)
 {
 	size_t indice = funcion_hash(clave) % d->capacidad;
 	size_t i = 0;
 	bool espacio_vacio = false;
 	while (!(*encontrada) && (!espacio_vacio) && (i < d->capacidad)) {
-		if ((!d->tabla[indice].fue_borrado) &&
+		if ((!d->tabla[indice].eliminado) &&
 		    (!d->tabla[indice].clave)) {
 			espacio_vacio = true;
-		} else if (son_claves_iguales(d->tabla[indice].clave, clave)) {
+		} else if ((d->tabla[indice].clave) &&
+			   (claves_coinciden(d->tabla[indice].clave, clave))) {
 			*encontrada = true;
 		} else {
-			indice = (indice + 1) % d->capacidad;
+			indice = (indice + PASO_LINEAL) % d->capacidad;
 			i++;
 		}
 	}
 	return indice;
+}
+
+/*
+ * La clave recibida es un puntero válido.
+ * Devuelve un puntero a la nueva cadena copiada, o NULL si falla la reserva.
+ */
+char *copiar_clave(char *clave)
+{
+	size_t longitud = strlen(clave);
+	char *copia = calloc(longitud + 1, sizeof(char));
+	if (!copia) {
+		return NULL;
+	}
+	strcpy(copia, clave);
+	return copia;
+}
+
+/*
+ * El diccionario y la clave son válidos. El índice está dentro del rango de la tabla.
+ * Duplica la clave en el heap.
+ * Devuelve true si la inserción fue exitosa, o false si falló la reserva de memoria para la clave.
+ */
+bool insertar_par(diccionario_t *d, size_t indice, char *clave, void *valor,
+		  void **anterior)
+{
+	char *clave_copiada = copiar_clave(clave);
+	if (!clave_copiada) {
+		return false;
+	}
+	if (anterior) {
+		*anterior = NULL;
+	}
+	d->tabla[indice].clave = clave_copiada;
+	d->tabla[indice].valor = valor;
+	d->tabla[indice].eliminado = false;
+	d->cantidad++;
+	return true;
+}
+
+/*
+ * El arreglo 'nueva_tabla' existe y su capacidad es mayor a cero. 
+ * La clave es válida.
+ * Busca la primera posición libre en el nuevo arreglo utilizando prueba lineal y 
+ * traslada los punteros correspondientes
+ */
+void reubicar_par(par_t *nueva_tabla, size_t nueva_capacidad, char *clave,
+		  void *valor)
+{
+	size_t indice = funcion_hash(clave) % nueva_capacidad;
+	while (nueva_tabla[indice].clave) {
+		indice = (indice + PASO_LINEAL) % nueva_capacidad;
+	}
+	nueva_tabla[indice].clave = clave;
+	nueva_tabla[indice].valor = valor;
+	nueva_tabla[indice].eliminado = false;
+}
+
+/*
+ * El diccionario existe y es válido.
+ * Devuelve true si la redimensión fue exitosa, o false si falló la reserva de memoria.
+ */
+bool rehashear(diccionario_t *d)
+{
+	size_t nueva_capacidad = d->capacidad * MULTIPLICADOR_CAPACIDAD;
+	par_t *nueva_tabla = calloc(nueva_capacidad, sizeof(par_t));
+	if (!nueva_tabla) {
+		return false;
+	}
+	for (size_t i = 0; i < d->capacidad; i++) {
+		if (d->tabla[i].clave) {
+			reubicar_par(nueva_tabla, nueva_capacidad,
+				     d->tabla[i].clave, d->tabla[i].valor);
+		}
+	}
+	free(d->tabla);
+	d->tabla = nueva_tabla;
+	d->capacidad = nueva_capacidad;
+	return true;
 }
 
 diccionario_t *diccionario_crear(unsigned capacidad_inicial)
@@ -67,8 +161,8 @@ diccionario_t *diccionario_crear(unsigned capacidad_inicial)
 	if (!diccionario) {
 		return NULL;
 	}
-	diccionario->capacidad = capacidad_inicial;
-	diccionario->tabla = calloc(capacidad_inicial, sizeof(celda_t));
+	diccionario->capacidad = (size_t)capacidad_inicial;
+	diccionario->tabla = calloc(capacidad_inicial, sizeof(par_t));
 	if (!diccionario->tabla) {
 		free(diccionario);
 		return NULL;
@@ -87,14 +181,25 @@ diccionario_t *diccionario_crear(unsigned capacidad_inicial)
 bool diccionario_insertar(diccionario_t *d, char *clave, void *valor,
 			  void **anterior)
 {
-	if ((!d) || (!clave) || (!clave)) {
+	if ((!d) || (!clave)) {
 		return false;
 	}
-	if ((float)d->cantidad / (float)d->capacidad >=
-	    FACTOR_DE_CARGA_MAXIMO) { //Casteo a int para que la divison me de con coma y no redondeado a 0
+	float factor_carga = (float)d->cantidad / (float)d->capacidad;
+	if (factor_carga >= FACTOR_DE_CARGA_MAXIMO) {
+		if (!rehashear(d)) {
+			return false;
+		}
+	}
+	bool clave_encontrada = false;
+	size_t indice = buscar_indice(d, clave, &clave_encontrada);
+	if (clave_encontrada) {
+		if (anterior) {
+			*anterior = d->tabla[indice].valor;
+		}
+		d->tabla[indice].valor = valor;
 		return true;
 	}
-	return false;
+	return (insertar_par(d, indice, clave, valor, anterior));
 }
 
 bool diccionario_buscar(diccionario_t *d, char *clave)
@@ -103,7 +208,7 @@ bool diccionario_buscar(diccionario_t *d, char *clave)
 		return false;
 	}
 	bool clave_encontrada = false;
-	buscar_clave(d, clave, &clave_encontrada);
+	buscar_indice(d, clave, &clave_encontrada);
 	return clave_encontrada;
 }
 
@@ -113,7 +218,7 @@ void *diccionario_obtener(diccionario_t *d, char *clave)
 		return NULL;
 	}
 	bool clave_encontrada = false;
-	size_t indice = buscar_clave(d, clave, &clave_encontrada);
+	size_t indice = buscar_indice(d, clave, &clave_encontrada);
 	if (clave_encontrada) {
 		return (d->tabla[indice].valor);
 	}
@@ -126,11 +231,11 @@ void *diccionario_eliminar(diccionario_t *d, char *clave)
 		return NULL;
 	}
 	bool clave_encontrada = false;
-	size_t indice = buscar_clave(d, clave, &clave_encontrada);
+	size_t indice = buscar_indice(d, clave, &clave_encontrada);
 	if (clave_encontrada) {
 		free(d->tabla[indice].clave);
 		d->tabla[indice].clave = NULL;
-		d->tabla[indice].fue_borrado = true;
+		d->tabla[indice].eliminado = true;
 		d->cantidad--;
 		return (d->tabla[indice].valor);
 	}
