@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 #include "src/diccionario.h"
 #include "src/leer_linea.h"
 
@@ -82,7 +81,6 @@ bool procesar_linea_csv(diccionario_t *diccionario, char *linea)
 }
 
 /*
- * La ruta del archivo es un puntero válido.
  * Abre el archivo CSV, crea el diccionario y carga todos los pares clave-valor
  * leyendo línea por línea. Cierra el archivo al finalizar.
  * 
@@ -126,14 +124,13 @@ void imprimir_palabra_traducida(diccionario_t *diccionario, char *palabra)
 
 /*
  * El diccionario y frase original son punteros válidos.
- * Crea una copia de la frase para no modificar el argumento original, la separa
- * palabra por palabra e imprime su traducción por pantalla.
+ * Devuelve true si pudo imprimir la palabra por pantalla, false caso contrario.
  */
-void traducir_frase(diccionario_t *diccionario, char *frase_original)
+bool traducir_frase(diccionario_t *diccionario, char *frase_original)
 {
 	char *frase_copia = duplicar_cadena(frase_original);
 	if (!frase_copia) {
-		return;
+		return false;
 	}
 	char *palabra_actual = frase_copia;
 	while (palabra_actual) {
@@ -147,6 +144,7 @@ void traducir_frase(diccionario_t *diccionario, char *frase_original)
 	}
 	printf("\n");
 	free(frase_copia);
+	return true;
 }
 
 int main(int argc, char *argv[])
@@ -161,7 +159,11 @@ int main(int argc, char *argv[])
 		printf("Error: No se pudo reservar memoria.\n");
 		return ERROR;
 	}
-	traducir_frase(diccionario, argv[ARGV_POSICION_FRASE]);
+	if (!traducir_frase(diccionario, argv[ARGV_POSICION_FRASE])) {
+		printf("Error: No se pudo reservar memoria para procesar la frase.\n");
+		diccionario_destruir_todo(diccionario, free);
+		return ERROR;
+	}
 	diccionario_destruir_todo(diccionario, free);
 	return EXITO;
 }

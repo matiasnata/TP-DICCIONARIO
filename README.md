@@ -40,31 +40,48 @@ El TDA Diccionario implementado funciona como una colección de pares clave-valo
 
 Al iniciar el programa, la clave de texto ingresada es procesada por una función matemática interna de hash (el algoritmo DJB2 en este caso). Esta función transforma la cadena de caracteres en un valor numérico, el cual se utiliza como índice para ubicar y guardar el par (clave, valor) dentro de un arreglo dinámico (tabla de hash).
 
-Durante la ejecución, a medida que aumenta la cantidad de pares, es probable que dos claves de texto distintas al aplicarles la función hash tengan como resultado el mismo índice numérico, provocando una colisión. Para resolver esto (la colisión), el diccionario utiliza un direccionamiento abierto con prueba lineal (linear probing). Si la posición original calculada ya se encuentra ocupada por otra clave, el programa avanza secuencialmente por las celdas contiguas del arreglo hasta encontrar un espacio libre donde insertar el nuevo par.
+Durante la ejecución, a medida que aumenta la cantidad de pares, es probable que dos claves de texto distintas al aplicarles la función hash tengan como resultado el mismo índice numérico, provocando una colisión. Para resolver la colisión, el diccionario utiliza un direccionamiento abierto con prueba lineal (linear probing). Si la posición original calculada ya se encuentra ocupada por otra clave, el programa avanza secuencialmente por las celdas contiguas del arreglo hasta encontrar un espacio libre donde insertar el nuevo par.
 
 Para garantizar el funcionamiento correcto del diccionario, el mismo cuenta con dos características primordiales:
 
 1) Eliminación de pares (Lápidas): Cuando se elimina un elemento de la tabla, se indica que en esa posición anteriormente había un par y fue eliminado. Esto es crucial para indicar que la celda está disponible para nuevas inserciones, pero al mismo tiempo advierte a los procesos de búsqueda que no deben detenerse ahí, ya que podrían existir elementos más adelante que colisionaron en el pasado.
 
-2) Redimensión dinámica (Rehash): Cuando el arreglo dinámico (tabla) se llena más allá del límite (factor de carga >= 0,75), las probabilidades de colisión aumentan en demasía y el rendimiento decae. Al detectar esto, se redimensiona la capacidad del diccionario y se reubican únicamente los pares que estaban anteriormente. Además de reducir el factor de carga, elimina las lápidas acumuladas para mejorar el rendimiento.
+2) Redimensión dinámica (Rehash): Cuando el arreglo dinámico (tabla) se llena más allá del límite (factor de carga >= 0,75), las probabilidades de colisión aumentan en demasía y el rendimiento de las operaciones decae. Al detectar esto, se redimensiona la capacidad del diccionario y se reubican únicamente los pares que estaban anteriormente. Además de reducir el factor de carga, elimina las lápidas acumuladas para mejorar el rendimiento.
 
 ## 3. Estructura
 Para implementar el TDA Diccionario, decidí realizar dos estructuras: una estructura administradora principal (diccionario) y una estructura interna para cada par del mismo.
 
 1) El Diccionario (diccionario_t):
 Para implementar la estructura, decidí hacerlo con tres campos: un puntero al arreglo dinámico que contiene las celdas donde se almacenan los pares, un contador con la cantidad de elementos actualmente insertados, y un campo que almacena la capacidad total del arreglo. Ambos campos son size_t ya que un número negativo no tendría sentido.
-Mantener un registro constante de la cantidad y la capacidad es indispensable, ya que permite calcular el factor de carga en tiempo real y decidir exactamente cuándo es necesario realizar la redimensión (rehash) para evitar que el rendimiento decaiga y que las colisiones aumenten.
+Tener un registro constante de la cantidad y la capacidad es sumamente necesario, ya que permite calcular el factor de carga en tiempo real y decidir cuándo es necesario realizar la redimensión (rehash) para evitar que el rendimiento decaiga y que las probabilidades de las colisiones aumenten.
 
 2) La Celda / Par (celda_t):
-Es la estructura que representa cada posición individual dentro del arreglo principal. Cada una cuenta con un puntero a la cadena de texto (clave), un puntero genérico al dato almacenado (valor), y un campo booleano (fue_borrado). Es necesario incluir este último campo (que actúa como "lápida") es necesario para el funcionamiento del diccionario cerrado: permite diferenciar un casillero que siempre estuvo vacío de uno que almacenó un elemento que luego fue eliminado. Esto asegura que el algoritmo de búsqueda por prueba lineal no se interrumpa erróneamente al encontrarse con un espacio que fue liberado, permitiendo encontrar claves que sufrieron colisiones en el pasado.
+Es la estructura que representa cada posición individual dentro del arreglo principal. Cada una cuenta con un puntero a la cadena de texto (clave), un puntero genérico al dato almacenado (valor), y un campo booleano (fue_borrado). Es necesario incluir este último campo (que actúa como "lápida") para el funcionamiento del diccionario cerrado: permite diferenciar un casillero que siempre estuvo vacío de uno que almacenó un elemento que luego fue eliminado. Esto asegura que el algoritmo de búsqueda por prueba lineal no se interrumpa erróneamente al encontrarse con un espacio que fue liberado, permitiendo encontrar claves que sufrieron colisiones en el pasado.
 
-//////
+A continuación dejo 3 diagramas de memoria para mejorar la explicación de las estructuras y como se ven reflejadas en la memoria una vez ejecutado el programa.
+Los diagramas corresponden a las funciones: diccionario_crear, diccionario_insertar y la situación donde es necesario redimensionar (rehashear) el tamaño del mismo.
 
+Diccionario_crear:
+Se muestra el estado de la memoria apenas termina la ejecución de la función. En el stack está la variable `diccionario`, de tipo `diccionario_t *`, que apunta al `struct diccionario` del heap. Ese struct tiene tres campos: `tabla`, que apunta al arreglo de pares, `cantidad = 0` y `capacidad = 3`. La tabla tiene 3 ubicaciones, `[0]`, `[1]` y `[2]`, todos vacíos. Como `calloc` inicializa en cero, cada `par_t` tiene `valor = NULL`, `clave = NULL` y `eliminado = false`.
+
+![Estado inicial del diccionario](img/diccionario_crear.svg)
+
+Diccionario_insertar:
+Muestra el diccionario después de insertar, en este orden, `hola → chau`, `algoritmos → logaritmos` y `dos → sapo`, con capacidad 3. Las tres claves dan hash % 3 = 1, así que hay colisiones, las cuáles se resuelven con probing lineal.
+- `hola` entra primero y ocupa el slot 1.
+- `algoritmos` encuentra el 1 ocupado y pasa al 2.
+- `dos` encuentra el 1 y el 2 ocupados, y vuelve al slot 0.
+
+![Diccionario con colisiones resueltas por prueba lineal](img/diccionario_insertar.svg)
+
+Rehashear:
+Rehashear aumenta la capacidad la tabla cuando supera el factor de carga. Reserva con `calloc` una tabla nueva del doble de capacidad y recorre la tabla vieja por índice, de 0 a `capacidad - 1`. A cada par con clave lo reubica en la tabla nueva aplicando la función de hash para obtener el índice. Al terminar libera la tabla vieja con `free` y actualiza `tabla` y `capacidad` del diccionario.
+
+En el diagrama se puede observar dos estados de la misma variable `diccionario`, unidos por la flecha vertical. El de arriba es el estado antes del rehash: 
+El de abajo es el estado después: `capacidad = 6`, y `tabla` apunta a la tabla nueva con los pares ya insertados.
+
+![Rehash de capacidad 3 a capacidad 6](img/diccionario_rehashear.svg)
 ### 3.1. Diagrama de memoria
-
-Para facilitar la explicación y 
-
-### 3.2. Análisis de complejidades
 
 1) Diccionario_crear: tiene una complejidad de O(1) ya que reserva memoria dinámica para una única estructura diccionario_t inicializando sus campos en 0 (calloc), asignando el tamaño inicial del array y devolviendo la misma en caso de éxito. Es una operación de tiempo constante.
 
